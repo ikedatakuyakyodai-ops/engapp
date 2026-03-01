@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>Gemini English</title>
+  
+  <!-- アプリアイコンの設定 -->
+  <link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/thumb/c/c2/Globe_icon_%28blue%29.svg/1024px-Globe_icon_%28blue%29.svg.png">
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Firebase Compat (v10) -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans overflow-hidden overscroll-none">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // ==========================================
+    // あなた専用のAPIキーとFirebase設定（合鍵）
+    // ==========================================
+    const GEMINI_API_KEY = "AIzaSyAhFuDW2f6afEHuAV2undfqqMYey-896MA";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyCpYr6OvWOg5vC5nwey_70jFD-RpV-ffBQ",
+      authDomain: "my-english-app-514d2.firebaseapp.com",
+      projectId: "my-english-app-514d2",
+      storageBucket: "my-english-app-514d2.firebasestorage.app",
+      messagingSenderId: "49093844143",
+      appId: "1:49093844143:web:129113db0452d138b6085a"
+    };
+
+    // Firebaseの安全な初期化
+    if (!firebase.apps.length) {
+      firebase.initializeApp(firebaseConfig);
+    }
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    // ==========================================
+    // UI Icons (外部依存をなくした頑丈な仕様)
+    // ==========================================
+    const Icons = {
+      Send: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"></path></svg>,
+      Mic: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"></path><path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8"></path></svg>,
+      MicOff: () => <svg width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="1" y1="1" x2="23" y2="23"></line><path d="M9 9v3a3 3 0 0 0 5.12 1.88M15 9.34V5a3 3 0 0 0-5.94-.6"></path><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"></path><line x1="12" y1="19" x2="12" y2="23"></line><line x1="8" y1="23" x2="16" y2="23"></line></svg>,
+      Volume2: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path></svg>,
+      Headphones: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M3 18v-6a9 9 0 0 1 18 0v6"></path><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"></path></svg>,
+      Languages: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>,
+      Refresh: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 2v6h-6M3 12a9 9 0 0 1 15-6.7L21 8M3 22v-6h6M21 12a9 9 0 0 1-15 6.7L3 16"></path></svg>,
+      Check: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>,
+      Alert: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>,
+      Book: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>,
+      Trash: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+      Bookmark: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path><line x1="12" y1="7" x2="12" y2="13"></line><line x1="9" y1="10" x2="15" y2="10"></line></svg>,
+      X: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+      Plus: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+      TrendingUp: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>,
+      Message: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>,
+      Cloud: () => <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"></path></svg>,
+      CloudOff: () => <svg width="10" height="10" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M22.61 16.95A5 5 0 0 0 18 10h-1.26a8 8 0 0 0-7.05-6M5 5a8 8 0 0 0 4 15h9a5 5 0 0 0 1.7-.3"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>,
+      Zap: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+      Target: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="12" r="6"></circle><circle cx="12" cy="12" r="2"></circle></svg>,
+      Award: () => <svg width="14" height="14" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="8" r="7"></circle><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"></polyline></svg>,
+      Sparkles: () => <svg width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><path d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>,
+      Settings: () => <svg width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>,
+      Loader2: ({className}) => <div className={`border-2 border-current border-t-transparent rounded-full animate-spin ${className}`} style={{width: '1em', height: '1em'}}></div>
+    };
+
+    // ==========================================
+    // Audio Processing Utilities
+    // ==========================================
+    let globalAudio = null;
+    const getGlobalAudio = () => {
+      if (!globalAudio) {
+        try { globalAudio = new window.Audio(); } catch (e) {}
+      }
+      return globalAudio;
+    };
+
+    const pcmToWavUrl = (base64PCM, sampleRate = 24000) => {
+      try {
+        const binaryString = atob(base64PCM);
+        const pcmLength = binaryString.length;
+        const wavBuffer = new ArrayBuffer(44 + pcmLength);
+        const view = new DataView(wavBuffer);
+        const writeString = (offset, string) => { for (let i = 0; i < string.length; i++) view.setUint8(offset + i, string.charCodeAt(i)); };
+        writeString(0, 'RIFF'); view.setUint32(4, 36 + pcmLength, true); writeString(8, 'WAVE'); writeString(12, 'fmt ');
+        view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, 'data');
+        view.setUint32(40, pcmLength, true);
+        const wavBytes = new Uint8Array(wavBuffer);
+        const pcmBytes = new Uint8Array(pcmLength);
+        for (let i = 0; i < pcmLength; i++) pcmBytes[i] = binaryString.charCodeAt(i);
+        wavBytes.set(pcmBytes, 44);
+        return URL.createObjectURL(new Blob([wavBuffer], { type: 'audio/wav' }));
+      } catch (e) { return null; }
+    };
+
+    const speakFastBrowserTTS = (text) => {
+      return new Promise((resolve) => {
+        if (!window.speechSynthesis) return resolve();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'en-US';
+        utterance.rate = 1.2; 
+        const fallbackTimer = setTimeout(() => { window.speechSynthesis.cancel(); resolve(); }, 10000);
+        const cleanUpAndResolve = () => { clearTimeout(fallbackTimer); resolve(); };
+        utterance.onend = cleanUpAndResolve; utterance.onerror = cleanUpAndResolve;
+        try { window.speechSynthesis.speak(utterance); } catch(e) { resolve(); }
+      });
+    };
+
+    // ==========================================
+    // Utils
+    // ==========================================
+    const fetchWithRetry = async (url, options, retries = 3) => {
+      let delay = 1000;
+      for (let i = 0; i < retries; i++) {
+        try {
+          const response = await fetch(url, options);
+          if (!response.ok) throw new Error(`HTTP error!`);
+          return await response.json();
+        } catch (error) {
+          if (i === retries - 1) throw error;
+          await new Promise(res => setTimeout(res, delay));
+          delay *= 2;
+        }
+      }
+    };
+
+    const cleanTranscript = (text) => {
+      if (!text) return '';
+      let cleaned = text.replace(/\b(uh|um|ah|er|hmm|like)\b/gi, ' ');
+      cleaned = cleaned.replace(/\b(\w+)\s+\1\b/gi, '$1');
+      cleaned = cleaned.replace(/\s+/g, ' ').trim();
+      if (cleaned.length > 0) cleaned = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
+      return cleaned;
+    };
+
+    const clearSelectionSafe = () => {
+      try {
+        if (window.getSelection) {
+          const sel = window.getSelection();
+          if (sel.removeAllRanges) sel.removeAllRanges();
+          else if (sel.empty) sel.empty();
+        }
+      } catch (e) {}
+    };
+
+    // ==========================================
+    // Main App Component
+    // ==========================================
+    function App() {
+      const [isCloudReady, setIsCloudReady] = useState(false);
+      const [cloudStatus, setCloudStatus] = useState('connecting'); 
+      const [user, setUser] = useState(null);
+      const [activeTab, setActiveTab] = useState('chat');
+      
+      const [messages, setMessages] = useState([]);
+      const [vocabulary, setVocabulary] = useState([]);
+      const [mistakes, setMistakes] = useState([]);
+      const [contextSummary, setContextSummary] = useState("");
+      const [analysisData, setAnalysisData] = useState(null);
+      
+      const [input, setInput] = useState('');
+      const [interimTranscript, setInterimTranscript] = useState('');
+      const [isLoading, setIsLoading] = useState(false);
+      const [isListening, setIsListening] = useState(false);
+      const [isAnalyzing, setIsAnalyzing] = useState(false);
+      const [toast, setToast] = useState(null);
+      const [confirmVocab, setConfirmVocab] = useState(null); 
+      const [manualVocabInput, setManualVocabInput] = useState(false);
+      
+      const [scenario, setScenario] = useState('free_talk');
+      const [correctionLevel, setCorrectionLevel] = useState('native_casual');
+      
+      const messagesEndRef = useRef(null);
+      const recognitionRef = useRef(null);
+      const isListeningRef = useRef(false);
+      const [msgCount, setMsgCount] = useState(0);
+
+      // --- 1. Safe Auth Init ---
+      useEffect(() => {
+        const timer = setTimeout(async () => {
+          try {
+            await auth.signInAnonymously();
+            auth.onAuthStateChanged((u) => {
+              setUser(u);
+              setIsCloudReady(true);
+              setCloudStatus('online');
+            });
+          } catch (e) {
+            console.warn("Cloud connection failed. Running offline.", e);
+            setCloudStatus('offline');
+            setIsCloudReady(true);
+          }
+        }, 500); // 画面表示後に少し待ってから認証（クラッシュ防止）
+        return () => clearTimeout(timer);
+      }, []);
+
+      // --- 2. Data Sync ---
+      useEffect(() => {
+        if (!user || cloudStatus !== 'online') return;
+        
+        const unsubVocab = db.collection('users').doc(user.uid).collection('vocabulary')
+          .onSnapshot(snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.addedAt - a.addedAt);
+            setVocabulary(list);
+          }, err => console.warn(err));
+
+        const unsubProf = db.collection('users').doc(user.uid).collection('profile').doc('summary')
+          .onSnapshot(docSnap => {
+            if(docSnap.exists) setContextSummary(docSnap.data().text || "");
+          }, err => console.warn(err));
+
+        const unsubMistakes = db.collection('users').doc(user.uid).collection('mistakes')
+          .onSnapshot(snap => {
+            const list = snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a,b) => b.timestamp - a.timestamp);
+            setMistakes(list);
+          }, err => console.warn(err));
+
+        return () => { unsubVocab(); unsubProf(); unsubMistakes(); };
+      }, [user, cloudStatus]);
+
+      // --- Prompts & Scenarios ---
+      const instruction = `
+重要ルール：
+1. 【厳格な制限】音声読み上げの途切れを防ぐため、1回の返答は**絶対に2文以内、かつ合計30単語以内**に収めてください。
+2. テキストは極めて口語的・カジュアルに（I'm, gonna, wanna, lemme, gotcha 等の短縮形を多用）。
+3. ユーザーが覚えるべき有用な表現は **(重要フレーズ)** のようにアスタリスク2つで囲むこと。
+4. 【絶対順守】会話をテンポ良く継続させるため、返答の最後は**必ず短く簡潔なユーザーへの質問（疑問文）**で終わること。
+`;
+      const getDynamicPrompt = () => {
+        let p = scenarios[scenario].prompt;
+        if (contextSummary) p += `\n\n【前提知識：ユーザー情報】\n${contextSummary}`;
+        return p;
+      };
+
+      const scenarios = {
+        free_talk: { title: "フリートーク", prompt: `あなたはフレンドリーな会話相手です。自然な英語で会話してください。\n${instruction}` },
+        cafe: { title: "カフェ注文", prompt: `あなたはカフェの店員、ユーザーは客です。フレンドリーに注文を取ってください。\n${instruction}` },
+        airport: { title: "入国審査", prompt: `あなたは入国審査官、ユーザーは旅行者です。少しフォーマルに質問してください。\n${instruction}` },
+        hotel: { title: "チェックイン", prompt: `あなたはホテルのフロント係、ユーザーは宿泊客です。チェックインを進めてください。\n${instruction}` }
+      };
+      
+      const correctionLevels = {
+        junior_high: { label: "中学生レベル", prompt: "中学レベルのシンプルでわかりやすい基本単語と文法" },
+        native_casual: { label: "ネイティブ日常", prompt: "ネイティブが日常で使う自然でカジュアルな表現（句動詞含む）" },
+        native_business: { label: "ネイティブビジネス", prompt: "ビジネスシーンに適した丁寧でプロフェッショナルな表現" }
+      };
+
+      const showToast = (message, type = 'info') => {
+        setToast({ message, type });
+        setTimeout(() => setToast(null), 3000);
+      };
+
+      const scrollToBottom = () => {
+        try { messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); } catch(e){}
+      };
+      useEffect(() => scrollToBottom(), [messages, activeTab, interimTranscript]);
+
+      // --- Speech Recognition ---
+      useEffect(() => {
+        if (typeof window === 'undefined') return;
+        const SpeechRecog = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecog) {
+          try {
+            const recognition = new SpeechRecog();
+            recognition.lang = 'en-US';
+            recognition.continuous = true; 
+            recognition.interimResults = true;
+
+            recognition.onresult = (e) => {
+              let f = '', i = '';
+              for (let k = e.resultIndex; k < e.results.length; ++k) {
+                if (e.results[k].isFinal) f += e.results[k][0].transcript;
+                else i += e.results[k][0].transcript;
+              }
+              if (f) {
+                setInput(prev => {
+                  const cleaned = cleanTranscript(f);
+                  if (!cleaned) return prev;
+                  const sep = prev && !/[.?! ]$/.test(prev) ? ' ' : '';
+                  return prev + sep + cleaned;
+                });
+              }
+              setInterimTranscript(i);
+            };
+            
+            recognition.onerror = (e) => {
+              if (e.error === 'not-allowed') {
+                isListeningRef.current = false;
+                setIsListening(false);
+                showToast("マイクがブロックされています。", 'error');
+              }
+            };
+            
+            recognition.onend = () => {
+              if (isListeningRef.current) {
+                try { recognition.start(); } catch(err) { 
+                  isListeningRef.current = false;
+                  setIsListening(false);
+                  setInterimTranscript('');
+                }
+              } else {
+                setIsListening(false);
+                setInterimTranscript('');
+              }
+            };
+            recognitionRef.current = recognition;
+          } catch (e) {}
+        }
+      }, []);
+
+      const toggleListen = () => {
+        if (!recognitionRef.current) return showToast("ブラウザが音声入力に非対応です。", "error");
+        
+        if (isListening) {
+          isListeningRef.current = false;
+          setIsListening(false);
+          try { recognitionRef.current.stop(); } catch(e){}
+        } else {
+          isListeningRef.current = true;
+          setIsListening(true);
+          try { recognitionRef.current.start(); } catch (e) {}
+        }
+      };
+
+      // --- Init Chat ---
+      useEffect(() => {
+        setMessages([]);
+        setAnalysisData(null);
+        let initMsg = "Hey there! I'm your English conversation partner. Whatcha **wanna talk about** today?";
+        if(scenario === 'cafe') initMsg = "Hi there! What can I **get for ya** today?";
+        if(scenario === 'airport') initMsg = "Next, please. Lemme see your passport and **customs declaration form**.";
+        if(scenario === 'hotel') initMsg = "Good afternoon. Welcome to our hotel. Are you **checking in**?";
+        setMessages([{ id: Date.now(), role: 'model', text: initMsg }]);
+      }, [scenario]);
+
+      // --- Vocabulary ---
+      const handleRequestVocab = (text) => {
+        if (!text || text.trim() === '') return;
+        setConfirmVocab({ text: text.trim() });
+      };
+
+      const handleTextSelection = () => {
+        setTimeout(() => {
+          try {
+            const selection = window.getSelection();
+            if (!selection) return;
+            const text = selection.toString().trim();
+            if (text.length > 1 && !confirmVocab) handleRequestVocab(text);
+          } catch (e) {}
+        }, 200);
+      };
+
+      const cancelVocab = () => {
+        setConfirmVocab(null);
+        clearSelectionSafe();
+      };
+
+      const saveVocab = async (textToSave) => {
+        const text = textToSave || (confirmVocab ? confirmVocab.text : '');
+        setConfirmVocab(null);
+        setManualVocabInput(false);
+        clearSelectionSafe();
+        
+        if (!text) return;
+        if (vocabulary.some(v => v.word.toLowerCase() === text.toLowerCase())) {
+          return showToast(`既に登録されています`, 'info');
+        }
+
+        const newObj = { word: text, meaning: "検索中...", isLoadingMeaning: true, addedAt: Date.now() };
+        
+        if (cloudStatus === 'online' && user) {
+          try {
+            const docRef = await db.collection('users').doc(user.uid).collection('vocabulary').add(newObj);
+            showToast(`単語帳に追加しました`, 'success');
+
+            const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: `英語「${text}」の一般的な日本語の意味（文の場合はニュアンス）を簡潔に答えてください。説明不要。` }] }] })
+            });
+            const meaning = res.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || '意味を取得できませんでした';
+            await docRef.update({ meaning, isLoadingMeaning: false });
+          } catch (e) { showToast("保存に失敗しました", 'error'); }
+        } else {
+          // Offline Fallback
+          const newId = Date.now().toString();
+          setVocabulary(prev => [{ id: newId, ...newObj }, ...prev]);
+          showToast(`単語帳に追加しました (一時保存)`, 'success');
+          try {
+            const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ contents: [{ parts: [{ text: `英語「${text}」の一般的な日本語の意味を簡潔に答えてください。` }] }] })
+            });
+            const meaning = res.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'エラー';
+            setVocabulary(prev => prev.map(v => v.id === newId ? { ...v, meaning, isLoadingMeaning: false } : v));
+          } catch(e) {}
+        }
+      };
+
+      const removeVocab = async (id) => {
+        if (cloudStatus === 'online' && user) {
+          try { await db.collection('users').doc(user.uid).collection('vocabulary').doc(id).delete(); } catch (e) {}
+        } else {
+          setVocabulary(prev => prev.filter(v => v.id !== id));
+        }
+      };
+
+      // --- Chat Logic ---
+      const updateContext = async (msgs) => {
+        try {
+          const txt = msgs.map(m => `${m.role}: ${m.text}`).join('\n');
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: `ユーザー情報をアップデートし、今後の会話の前提となる情報を3〜4文の日本語で要約してください。\n\n【現在】\n${contextSummary || "なし"}\n\n【会話】\n${txt}` }] }] })
+          });
+          const newSum = res.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+          if (newSum) {
+            if (cloudStatus === 'online' && user) {
+              await db.collection('users').doc(user.uid).collection('profile').doc('summary').set({ text: newSum }, { merge: true });
+            } else { setContextSummary(newSum); }
+          }
+        } catch (e) {}
+      };
+
+      const checkGrammar = async (text, msgId) => {
+        try {
+          const p = `以下の英文を添削してください。
+目標: ${correctionLevels[correctionLevel].prompt}
+ルール1: 些細な句読点ミスは指摘せず、意味が通じればisPerfectをtrueにすること。
+ルール2: explanationInJapanese の内容は、理由を「・」から始まる箇条書きで、極めて簡潔に記述すること。`;
+
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `"${text}"` }] }],
+              systemInstruction: { parts: [{ text: p }] },
+              generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { isPerfect: { type: "BOOLEAN" }, correctedText: { type: "STRING" }, explanationInJapanese: { type: "STRING" } }, required: ["isPerfect", "correctedText", "explanationInJapanese"] } }
+            })
+          });
+          const parsedData = JSON.parse(res.candidates?.[0]?.content?.parts?.[0]?.text);
+          if (parsedData) {
+            setMessages(prev => prev.map(m => m.id === msgId ? { ...m, correction: parsedData } : m));
+            
+            if (!parsedData.isPerfect) {
+              const errObj = { originalText: text, correctedText: parsedData.correctedText, explanation: parsedData.explanationInJapanese, timestamp: Date.now() };
+              if (cloudStatus === 'online' && user) {
+                await db.collection('users').doc(user.uid).collection('mistakes').add(errObj);
+              } else {
+                setMistakes(prev => [{ id: Date.now().toString(), ...errObj }, ...prev]); 
+              }
+            }
+          }
+        } catch (e) {}
+      };
+
+      const playFastResponse = async (msgId, text) => {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: true } : m));
+        await speakFastBrowserTTS(text.replace(/\*\*/g, ''));
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: false } : m));
+      };
+
+      const playHighQualityAudio = async (msgId, text) => {
+        const audio = getGlobalAudio();
+        if (!audio) return playFastResponse(msgId, text); 
+        
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: true, isHighQuality: true } : m));
+        const cleanText = text.replace(/\*\*/g, '');
+        const ttsPrompt = `Speak fast, casually, and use natural linking and reductions. Sound like a native speaker mumbling slightly and talking naturally to a friend: ${cleanText}`;
+
+        try {
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: ttsPrompt }] }], generationConfig: { responseModalities: ["AUDIO"], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: "Aoede" } } } }, model: "gemini-2.5-flash-preview-tts" })
+          });
+          
+          const b64 = res.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+          if (b64) {
+            const url = pcmToWavUrl(b64);
+            if (url) {
+              audio.src = url;
+              const timeout = setTimeout(() => { audio.pause(); setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: false, isHighQuality: false } : m)); URL.revokeObjectURL(url); }, 20000);
+              audio.onended = () => { clearTimeout(timeout); setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: false, isHighQuality: false } : m)); URL.revokeObjectURL(url); };
+              audio.onerror = () => { clearTimeout(timeout); setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: false, isHighQuality: false } : m)); URL.revokeObjectURL(url); };
+              await audio.play();
+              return;
+            }
+          }
+        } catch (e) {}
+        await speakFastBrowserTTS(cleanText);
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isSpeaking: false, isHighQuality: false } : m));
+      };
+
+      const sendMessage = async () => {
+        if (!input.trim()) return;
+
+        const audio = getGlobalAudio();
+        if (audio && audio.src === '') {
+          audio.src = "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=";
+          audio.play().catch(()=>{});
+        }
+
+        if (isListeningRef.current) {
+          isListeningRef.current = false;
+          setIsListening(false);
+          try { recognitionRef.current?.stop(); } catch(e){}
+        }
+
+        let ut = input.trim();
+        if (!/[.?!]$/.test(ut)) ut += '.';
+
+        const uMsg = { id: Date.now(), role: 'user', text: ut };
+        setMessages(p => [...p, uMsg]);
+        setInput('');
+        setInterimTranscript('');
+        setIsLoading(true);
+
+        checkGrammar(ut, uMsg.id);
+
+        try {
+          const hist = messages.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
+          hist.push({ role: 'user', parts: [{ text: ut }] });
+
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: hist, systemInstruction: { parts: [{ text: getDynamicPrompt() }] } })
+          });
+          const aiT = res.candidates?.[0]?.content?.parts?.[0]?.text;
+          
+          if (aiT) {
+            const aiId = Date.now();
+            setMessages(p => [...p, { id: aiId, role: 'model', text: aiT }]);
+            playFastResponse(aiId, aiT);
+
+            const nc = msgCount + 1;
+            setMsgCount(nc);
+            if (nc % 4 === 0) updateContext([...messages.slice(-6), uMsg, { role: 'model', text: aiT }]);
+          }
+        } catch (e) {
+          showToast("通信エラーが発生しました", 'error');
+        } finally {
+          setIsLoading(false);
+        }
+      };
+
+      const handleTranslate = async (msgId, text) => {
+        setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isTranslating: true } : m));
+        try {
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ contents: [{ parts: [{ text: `以下の英語を自然な日本語に翻訳してください。翻訳結果のみを出力し、解説や修正提案は絶対にしないでください:\n\n${text.replace(/\*\*/g, '')}` }] }] })
+          });
+          const t = res.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (t) setMessages(prev => prev.map(m => m.id === msgId ? { ...m, translation: t, isTranslating: false } : m));
+        } catch (e) { setMessages(prev => prev.map(m => m.id === msgId ? { ...m, isTranslating: false } : m)); }
+      };
+
+      const handleAnalyze = async () => {
+        if (mistakes.length < 2) return showToast("もう少しミスのデータが蓄積されてから分析しましょう", "info");
+        setIsAnalyzing(true);
+        try {
+          const msText = mistakes.slice(0, 15).map(m => `ミス: ${m.originalText}\n修正: ${m.correctedText}`).join('\n\n');
+          const sys = `あなたは英語コーチです。ユーザーのプロフィールとミス履歴から、現在のレベル、強み、弱点、学習アドバイスをJSONで提供してください。JSONの値は必ず「日本語」で。`;
+          
+          const res = await fetchWithRetry(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: `【プロフィール】\n${contextSummary || '不明'}\n\n【ミス履歴】\n${msText}` }] }],
+              systemInstruction: { parts: [{ text: sys }] },
+              generationConfig: { responseMimeType: "application/json", responseSchema: { type: "OBJECT", properties: { level: { type: "STRING" }, strengths: { type: "ARRAY", items: { type: "STRING" } }, weaknesses: { type: "ARRAY", items: { type: "STRING" } }, advice: { type: "ARRAY", items: { type: "STRING" } }, encouragement: { type: "STRING" } }, required: ["level", "strengths", "weaknesses", "advice", "encouragement"] } }
+            })
+          });
+          const parsed = JSON.parse(res.candidates?.[0]?.content?.parts?.[0]?.text);
+          if (parsed) { setAnalysisData(parsed); showToast("分析完了！", "success"); }
+        } catch (e) { showToast("分析に失敗しました", "error"); } finally { setIsAnalyzing(false); }
+      };
+
+      const MessageText = ({ text }) => {
+        const parts = text.split(/(\*\*.*?\*\*)/g);
+        return (
+          <span className="leading-relaxed selectable-text pointer-events-auto block">
+            {parts.map((part, i) => {
+              if (!part) return null;
+              if (part.startsWith('**') && part.endsWith('**')) {
+                const content = part.slice(2, -2);
+                const words = content.split(/([a-zA-Z0-9']+)/g);
+                return (
+                  <span key={i} className="text-indigo-800 font-bold bg-indigo-100/70 px-1 py-0.5 rounded border border-indigo-200 mx-0.5 inline-block">
+                    {words.map((w, j) => /^[a-zA-Z0-9']+$/.test(w) ? (
+                      <span key={j} onClick={() => handleRequestVocab(w)} className="cursor-pointer hover:bg-indigo-300 hover:text-indigo-900 rounded px-[1px] transition-colors">{w}</span>
+                    ) : <span key={j}>{w}</span>)}
+                    <button onClick={() => handleRequestVocab(content)} className="ml-1 inline-flex items-center text-indigo-500 hover:bg-indigo-500 hover:text-white p-0.5 rounded-full bg-white shadow-sm transition-colors"><Icons.Bookmark /></button>
+                  </span>
+                );
+              }
+              const words = part.split(/([a-zA-Z0-9']+)/g);
+              return (
+                <span key={i}>
+                  {words.map((w, j) => /^[a-zA-Z0-9']+$/.test(w) ? (
+                    <span key={j} onClick={() => handleRequestVocab(w)} className="cursor-pointer hover:bg-yellow-200 hover:text-slate-900 rounded px-[1px] transition-colors">{w}</span>
+                  ) : <span key={j}>{w}</span>)}
+                </span>
+              );
+            })}
+          </span>
+        );
+      };
+
+      if (!isCloudReady) {
+        return (
+          <div className="h-screen w-full flex flex-col items-center justify-center bg-slate-50">
+            <Icons.Loader2 className="w-10 h-10 text-blue-600 mb-4" />
+            <p className="text-slate-500 font-bold text-sm">システムを安全に起動中...</p>
+          </div>
+        );
+      }
+
+      return (
+        <div className="flex flex-col h-[100dvh] bg-slate-50 text-slate-800">
+          
+          {toast && (
+            <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] bg-slate-800 text-white px-5 py-3 rounded-full shadow-xl flex items-center space-x-2 text-sm animate-fade-in font-medium max-w-[90%]">
+              {toast.type === 'success' && <span className="text-emerald-400"><Icons.Check /></span>}
+              {toast.type === 'error' && <span className="text-red-400"><Icons.Alert /></span>}
+              {toast.type === 'info' && <span className="text-blue-400"><Icons.Info /></span>}
+              <span className="truncate">{toast.message}</span>
+            </div>
+          )}
+
+          {confirmVocab && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full border border-slate-100">
+                <h3 className="text-lg font-bold text-slate-800 mb-3 flex items-center"><span className="text-blue-600 mr-2"><Icons.Book /></span>単語帳に追加</h3>
+                <p className="text-slate-600 mb-6 text-sm leading-relaxed">
+                  「<span className="font-bold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded mx-0.5">{confirmVocab.text}</span>」を保存しますか？
+                </p>
+                <div className="flex space-x-3 justify-end">
+                  <button onClick={cancelVocab} className="px-5 py-2 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">キャンセル</button>
+                  <button onClick={() => saveVocab()} className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-colors">追加する</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {manualVocabInput && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4 animate-fade-in">
+              <div className="bg-white rounded-2xl p-6 shadow-2xl max-w-sm w-full border border-slate-100">
+                <h3 className="text-lg font-bold text-slate-800 mb-3 flex items-center"><span className="text-blue-600 mr-2"><Icons.Plus /></span>手動で追加</h3>
+                <p className="text-sm text-slate-500 mb-3">覚えたい単語や文を入力してください。</p>
+                <input type="text" autoFocus className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:border-blue-500 font-medium mb-6" placeholder="例: make sense" onKeyDown={e => { if(e.key==='Enter') saveVocab(e.target.value.trim()); }} id="manual-vocab-input" />
+                <div className="flex space-x-3 justify-end">
+                  <button onClick={() => setManualVocabInput(false)} className="px-5 py-2 rounded-xl text-sm font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">キャンセル</button>
+                  <button onClick={() => saveVocab(document.getElementById('manual-vocab-input').value.trim())} className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md transition-colors">保存する</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <header className="bg-white border-b border-slate-200 px-4 py-3 flex flex-wrap items-center justify-between gap-3 shrink-0 shadow-sm z-10">
+            <div className="flex items-center space-x-3">
+              <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-2 rounded-xl shadow-inner text-white"><Icons.Languages /></div>
+              <div>
+                <h1 className="text-lg sm:text-xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-blue-600 to-indigo-600">Gemini English</h1>
+                <div className={`flex items-center text-[10px] font-bold space-x-1 mt-0.5 ${cloudStatus === 'online' ? 'text-emerald-600' : 'text-slate-400'}`}>
+                  {cloudStatus === 'online' ? <Icons.Cloud /> : <Icons.CloudOff />}
+                  <span>{cloudStatus === 'online' ? 'クラウド同期中' : '一時保存モード'}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="relative flex items-center bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg p-1.5">
+                <span className="mr-1 ml-1 text-emerald-600"><Icons.Settings /></span>
+                <select value={correctionLevel} onChange={(e) => setCorrectionLevel(e.target.value)} className="bg-transparent text-xs outline-none font-bold cursor-pointer appearance-none pr-2">
+                  {Object.entries(correctionLevels).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                </select>
+              </div>
+              <select value={scenario} onChange={(e) => { setScenario(e.target.value); setActiveTab('chat'); }} className="bg-slate-100 border border-slate-200 text-slate-700 text-xs rounded-lg p-2 outline-none font-bold">
+                {Object.entries(scenarios).map(([k, v]) => <option key={k} value={k}>{v.title}</option>)}
+              </select>
+              <button onClick={() => setScenario(scenario)} className="p-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors"><Icons.Refresh /></button>
+            </div>
+          </header>
+
+          <div className="bg-white border-b border-slate-200 flex px-2 sm:px-4 space-x-1 sm:space-x-4 shrink-0 overflow-x-auto no-scrollbar z-10">
+            <button onClick={() => setActiveTab('chat')} className={`flex items-center space-x-1.5 py-3 px-3 border-b-[3px] font-bold text-sm whitespace-nowrap ${activeTab === 'chat' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <Icons.Message /><span>チャット</span>
+            </button>
+            <button onClick={() => setActiveTab('vocab')} className={`flex items-center space-x-1.5 py-3 px-3 border-b-[3px] font-bold text-sm whitespace-nowrap ${activeTab === 'vocab' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <Icons.Book /><span>単語帳</span>
+              {vocabulary.length > 0 && <span className="bg-blue-100 text-blue-700 text-[10px] py-0.5 px-1.5 rounded-full">{vocabulary.length}</span>}
+            </button>
+            <button onClick={() => setActiveTab('analysis')} className={`flex items-center space-x-1.5 py-3 px-3 border-b-[3px] font-bold text-sm whitespace-nowrap ${activeTab === 'analysis' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+              <Icons.TrendingUp /><span>分析</span>
+            </button>
+          </div>
+
+          <div className="flex-1 relative overflow-hidden bg-slate-50/50">
+            
+            {activeTab === 'chat' && (
+              <main className="absolute inset-0 overflow-y-auto p-4 space-y-5" onMouseUp={handleTextSelection} onTouchEnd={handleTextSelection}>
+                <div className="text-center text-[11px] text-slate-500 bg-white border border-slate-200 py-1.5 rounded-full w-max mx-auto px-4 shadow-sm font-medium">
+                  💡 単語をタップ・文章なぞりで保存
+                </div>
+                
+                {messages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.role === 'model' && (
+                      <div className="flex flex-col max-w-[90%] sm:max-w-[75%]">
+                        <div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm shadow-sm">
+                          <MessageText text={msg.text} />
+                          <div className="flex items-center space-x-2 mt-3 pt-3 border-t border-slate-100">
+                            <button onClick={() => playHighQualityAudio(msg.id, msg.text)} disabled={msg.isSpeaking} className={`flex items-center space-x-1.5 text-xs font-bold px-2.5 py-1.5 rounded-lg ${msg.isSpeaking ? 'text-blue-600 bg-blue-50' : 'text-slate-500 bg-slate-50 hover:bg-blue-50 hover:text-blue-600 transition-colors'}`}>
+                              {msg.isSpeaking ? <Icons.Loader2 className="w-3.5 h-3.5" /> : (msg.isHighQuality ? <Icons.Headphones /> : <Icons.Volume2 />)}
+                              <span>もう一度聞く(高音質)</span>
+                            </button>
+                            {!msg.translation && (
+                              <button onClick={() => handleTranslate(msg.id, msg.text)} disabled={msg.isTranslating} className="flex items-center space-x-1.5 text-xs font-bold text-slate-500 bg-slate-50 px-2.5 py-1.5 rounded-lg hover:bg-indigo-50 hover:text-indigo-600 transition-colors">
+                                {msg.isTranslating ? <Icons.Loader2 className="w-3.5 h-3.5" /> : <Icons.Languages />}
+                                <span>翻訳</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        {msg.translation && <div className="mt-1.5 bg-indigo-50 border border-indigo-100 text-indigo-900 p-3 rounded-xl rounded-tl-sm text-sm shadow-sm">{msg.translation}</div>}
+                      </div>
+                    )}
+
+                    {msg.role === 'user' && (
+                      <div className="flex flex-col items-end max-w-[90%] sm:max-w-[75%]">
+                        <div className="bg-blue-600 text-white p-4 rounded-2xl rounded-tr-sm shadow-sm text-[15px] font-medium leading-relaxed">
+                          {msg.text}
+                        </div>
+                        {msg.correction && (
+                          <div className={`mt-1.5 p-4 rounded-xl border text-sm w-full shadow-sm ${msg.correction.isPerfect ? 'bg-emerald-50 border-emerald-200' : 'bg-orange-50 border-orange-200'}`}>
+                            <div className="flex items-start space-x-2">
+                              <span className={`mt-0.5 shrink-0 ${msg.correction.isPerfect ? 'text-emerald-500' : 'text-orange-500'}`}>
+                                {msg.correction.isPerfect ? <Icons.Check /> : <Icons.Book />}
+                              </span>
+                              <div className="flex-1">
+                                {msg.correction.isPerfect ? (
+                                  <p className="font-bold text-emerald-800">素晴らしい表現です。</p>
+                                ) : (
+                                  <>
+                                    <p className="font-bold text-[10px] text-orange-600 bg-white border border-orange-200 px-1.5 py-0.5 rounded w-max mb-1">{correctionLevels[correctionLevel].label}の表現</p>
+                                    <p className="font-bold text-[15px] mb-2 text-orange-950">{msg.correction.correctedText}</p>
+                                  </>
+                                )}
+                                <div className="mt-2 text-xs">
+                                  {msg.correction.explanationInJapanese.replace(/(?<!\n)・/g, '\n・').split('\n').map(l => l.trim()).filter(Boolean).map((line, idx) => (
+                                    <p key={idx} className={`mb-1.5 ${msg.correction.isPerfect ? 'text-emerald-700' : 'text-orange-800'} leading-relaxed`}>{line}</p>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        {!msg.correction && <div className="mt-1 flex items-center text-xs text-slate-400 space-x-1"><Icons.Loader2 className="w-3 h-3" /><span>添削中...</span></div>}
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {isLoading && (
+                  <div className="flex justify-start"><div className="bg-white border border-slate-200 p-4 rounded-2xl rounded-tl-sm flex space-x-2"><div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></div><div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{animationDelay:'0.2s'}}></div><div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{animationDelay:'0.4s'}}></div></div></div>
+                )}
+                <div ref={messagesEndRef} className="pb-2" />
+              </main>
+            )}
+
+            {activeTab === 'vocab' && (
+              <main className="absolute inset-0 overflow-y-auto p-4 sm:p-6">
+                <div className="max-w-3xl mx-auto">
+                  <div className="flex items-center justify-between mb-6">
+                     <h2 className="text-xl font-extrabold text-slate-800 flex items-center"><span className="text-blue-600 mr-2"><Icons.Book /></span>マイ単語帳</h2>
+                     <button onClick={() => setManualVocabInput(true)} className="flex items-center space-x-1 text-sm bg-indigo-50 text-indigo-700 font-bold px-3 py-1.5 rounded-lg border border-indigo-100 hover:bg-indigo-100 transition-colors">
+                       <Icons.Plus /><span>手動で追加</span>
+                     </button>
+                  </div>
+
+                  {vocabulary.length === 0 ? (
+                    <div className="text-center py-16 bg-white rounded-3xl border-2 border-slate-200 border-dashed">
+                      <div className="text-slate-300 mb-4 flex justify-center"><Icons.Book /></div>
+                      <p className="text-slate-600 font-bold mb-2">単語がありません</p>
+                      <p className="text-sm text-slate-500 mb-4">チャット内の英語をタップ・ドラッグで保存できます</p>
+                    </div>
+                  ) : (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {vocabulary.map((item) => (
+                        <div key={item.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-start justify-between">
+                          <div className="pr-3">
+                            <p className="text-[16px] font-black text-slate-800 mb-1 flex flex-wrap gap-2 items-center">
+                              {item.word}
+                              {item.word.includes(' ') && <span className="bg-indigo-50 text-indigo-700 text-[10px] px-1.5 py-0.5 rounded-full border border-indigo-100">フレーズ</span>}
+                            </p>
+                            <div className="text-sm text-slate-600">
+                              {item.isLoadingMeaning ? <span className="flex items-center text-slate-400"><Icons.Loader2 className="w-3 h-3 mr-1" />検索中</span> : item.meaning}
+                            </div>
+                          </div>
+                          <button onClick={() => removeVocab(item.id)} className="text-slate-300 hover:text-red-500 p-1 transition-colors"><Icons.Trash /></button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </main>
+            )}
+
+            {activeTab === 'analysis' && (
+              <main className="absolute inset-0 overflow-y-auto p-4 sm:p-6">
+                <div className="max-w-3xl mx-auto space-y-6">
+                  <button onClick={handleAnalyze} disabled={isAnalyzing} className={`w-full flex items-center justify-center space-x-2 py-3.5 rounded-xl font-bold text-white shadow-md transition-colors ${isAnalyzing ? 'bg-slate-400' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                    {isAnalyzing ? <Icons.Loader2 className="w-4 h-4" /> : <Icons.Sparkles />}
+                    <span>{isAnalyzing ? '分析中...' : '蓄積データから実力を分析する'}</span>
+                  </button>
+
+                  {analysisData && !isAnalyzing && (
+                    <div className="space-y-4 animate-fade-in">
+                      <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-2xl p-5 text-white">
+                        <div className="text-blue-200 mb-1 font-bold text-xs flex items-center"><span className="mr-1"><Icons.Award /></span>Current Level</div>
+                        <h3 className="text-xl font-black">{analysisData.level}</h3>
+                      </div>
+                      <div className="bg-white rounded-2xl p-5 border border-slate-200">
+                        <h3 className="text-emerald-600 font-bold mb-3 flex items-center"><span className="mr-1"><Icons.Zap /></span>強み</h3>
+                        <ul className="space-y-2 text-sm text-slate-700 font-medium">{analysisData.strengths.map((s,i) => <li key={i} className="flex items-start"><span className="text-emerald-500 mr-2 mt-0.5 shrink-0"><Icons.Check /></span><span>{s}</span></li>)}</ul>
+                      </div>
+                      <div className="bg-white rounded-2xl p-5 border border-slate-200">
+                        <h3 className="text-orange-600 font-bold mb-3 flex items-center"><span className="mr-1"><Icons.Target /></span>弱点</h3>
+                        <ul className="space-y-2 text-sm text-slate-700 font-medium">{analysisData.weaknesses.map((w,i) => <li key={i} className="flex items-start"><span className="text-orange-500 mr-2 mt-0.5 shrink-0"><Icons.Alert /></span><span>{w}</span></li>)}</ul>
+                      </div>
+                      <div className="bg-white rounded-2xl p-5 border border-slate-200">
+                        <h3 className="text-blue-600 font-bold mb-3 flex items-center"><span className="mr-1"><Icons.Book /></span>アドバイス</h3>
+                        <ul className="space-y-3 text-sm text-slate-700 font-medium">{analysisData.advice.map((a,i) => <li key={i} className="bg-blue-50 p-3 rounded-lg leading-relaxed">{a}</li>)}</ul>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </main>
+            )}
+          </div>
+
+          {activeTab === 'chat' && (
+            <footer className="bg-white border-t border-slate-200 p-3 sm:p-4 shrink-0 z-10 shadow-[0_-5px_15px_rgba(0,0,0,0.05)]">
+              {isListening && interimTranscript && (
+                <div className="absolute -top-12 left-3 right-3 bg-slate-800 text-white text-xs px-4 py-2.5 rounded-xl flex items-center space-x-2 shadow-lg">
+                  <Icons.Loader2 className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                  <span className="truncate">{interimTranscript}</span>
+                </div>
+              )}
+              <div className="max-w-4xl mx-auto flex items-end space-x-2 relative">
+                <button onClick={toggleListen} className={`p-3.5 rounded-xl shrink-0 transition-colors ${isListening ? 'bg-red-500 text-white animate-pulse' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+                  {isListening ? <Icons.MicOff /> : <Icons.Mic />}
+                </button>
+                <div className="flex-1 relative bg-slate-50 border border-slate-200 rounded-xl focus-within:border-blue-500 flex items-center">
+                  <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); } }} placeholder={isListening ? "話してください..." : "英語で入力"} className="w-full bg-transparent min-h-[50px] max-h-24 py-3.5 pl-3 pr-10 outline-none resize-none text-[15px] font-medium" rows="1" />
+                  {input && <button onClick={() => setInput('')} className="absolute right-2 p-1.5 text-slate-400 hover:text-slate-600 bg-white rounded-full border shadow-sm transition-colors"><Icons.X /></button>}
+                </div>
+                <button onClick={sendMessage} disabled={!input.trim() || isLoading} className={`p-3.5 rounded-xl shrink-0 transition-all ${!input.trim() || isLoading ? 'bg-blue-100 text-blue-300' : 'bg-blue-600 text-white shadow-md hover:bg-blue-700'}`}>
+                  {isLoading ? <Icons.Loader2 className="w-5 h-5" /> : <Icons.Send />}
+                </button>
+              </div>
+            </footer>
+          )}
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
+
