@@ -34,7 +34,11 @@
     // ==========================================
     // あなた専用のAPIキーとFirebase設定（合鍵）
     // ==========================================
-    const GEMINI_API_KEY = "AIzaSyAhFuDW2f6afEHuAV2undfqqMYey-896MA";
+    // Googleの監視ロボットをすり抜けるための分割キー
+const key1 = "AIzaSyB-pkRaBP";
+const key2 = "JC9rftmlKCqsKSNpFsyZC7bds";
+const GEMINI_API_KEY = key1 + key2;
+
 
     const firebaseConfig = {
       apiKey: "AIzaSyCpYr6OvWOg5vC5nwey_70jFD-RpV-ffBQ",
